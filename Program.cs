@@ -41,18 +41,33 @@ namespace TPMImport
                 if (!cert.HasPrivateKey)
                     continue; // private key missing
 
-                var priv_key = (RSACng)cert.GetRSAPrivateKey();
-                if (priv_key == null)
-                    continue; // unsupported key type
+                var priv_key_rsa = (RSACng)cert.GetRSAPrivateKey();
+                if (priv_key_rsa != null)
+                {
+                    if (priv_key_rsa.Key.Provider != CngProvider.MicrosoftPlatformCryptoProvider)
+                        continue; // key not stored in TPM
 
-                if (priv_key.Key.Provider != CngProvider.MicrosoftPlatformCryptoProvider)
-                    continue; // key not stored in TPM
+                    Console.WriteLine("Deleting " + cert.Subject + " with name " + priv_key_rsa.Key.KeyName + "\n");
+                    // delete certificate
+                    store.Remove(cert);
+                    // delete associated CNG key
+                    priv_key_rsa.Key.Delete();
+                }
+                else
+                {
+                    var priv_key_ecdh = (ECDsaCng)cert.GetECDsaPrivateKey();
+                    if (priv_key_ecdh == null)
+                        continue; // unsupported key type
 
-                Console.WriteLine("Deleting " + cert.Subject + " with name " + priv_key.Key.KeyName + "\n");
-                // delete certificate
-                store.Remove(cert);
-                // delete associated CNG key
-                priv_key.Key.Delete();
+                    if (priv_key_rsa.Key.Provider != CngProvider.MicrosoftPlatformCryptoProvider)
+                        continue; // key not stored in TPM
+
+                    Console.WriteLine("Deleting " + cert.Subject + " with name " + priv_key_rsa.Key.KeyName + "\n");
+                    // delete certificate
+                    store.Remove(cert);
+                    // delete associated CNG key
+                    priv_key_rsa.Key.Delete();
+                }
 
                 return;
             }
