@@ -143,28 +143,46 @@ namespace TPMImport
                 return;
             }
 
-            using var rsaPrivKey = (RSACng)cert.GetRSAPrivateKey();
-            if (!rsaPrivKey.Key.ExportPolicy.HasFlag(CngExportPolicies.AllowPlaintextExport))
-            {
-                // workaround for missing AllowPlaintextExport
-                PbeParameters encParams = new(PbeEncryptionAlgorithm.Aes128Cbc, HashAlgorithmName.SHA256, 1);
-                byte[] exportedKey = rsaPrivKey.ExportEncryptedPkcs8PrivateKey(PasswordForTemporaryKeys, encParams);
-                rsaPrivKey.ImportEncryptedPkcs8PrivateKey(PasswordForTemporaryKeys, exportedKey, out _);
-            }
-
-            byte[] keyData = rsaPrivKey.Key.Export(CngKeyBlobFormat.GenericPrivateBlob);
             CngKeyCreationParameters keyParams = new()
             {
                 ExportPolicy = CngExportPolicies.None,
                 KeyCreationOptions = fUser ? CngKeyCreationOptions.None : CngKeyCreationOptions.MachineKey,
                 Provider =
-                new CngProvider("Microsoft Platform Crypto Provider"),
+    new CngProvider("Microsoft Platform Crypto Provider"),
                 //CngProvider.MicrosoftSoftwareKeyStorageProvider
             };
-            keyParams.Parameters.Add(new CngProperty(CngKeyBlobFormat.GenericPrivateBlob.Format, keyData, CngPropertyOptions.None));
-            //keyParams.Parameters.Add(new CngProperty("Key Type", new byte[] { 0, 0, 0, 32 }, CngPropertyOptions.None));
 
+            using var rsaPrivKey = (RSACng)cert.GetRSAPrivateKey();
+            if (rsaPrivKey != null)
+            {
+                if (!rsaPrivKey.Key.ExportPolicy.HasFlag(CngExportPolicies.AllowPlaintextExport))
+                {
+                    // workaround for missing AllowPlaintextExport
+                    PbeParameters encParams = new(PbeEncryptionAlgorithm.Aes128Cbc, HashAlgorithmName.SHA256, 1);
+                    byte[] exportedKey = rsaPrivKey.ExportEncryptedPkcs8PrivateKey(PasswordForTemporaryKeys, encParams);
+                    rsaPrivKey.ImportEncryptedPkcs8PrivateKey(PasswordForTemporaryKeys, exportedKey, out _);
+                }
 
+                byte[] keyData = rsaPrivKey.Key.Export(CngKeyBlobFormat.GenericPrivateBlob);
+                keyParams.Parameters.Add(new CngProperty(CngKeyBlobFormat.GenericPrivateBlob.Format, keyData, CngPropertyOptions.None));
+                //keyParams.Parameters.Add(new CngProperty("Key Type", new byte[] { 0, 0, 0, 32 }, CngPropertyOptions.None));
+            }
+
+            using var ecPrivKey = (ECDsaCng)cert.GetECDsaPrivateKey();
+            if (ecPrivKey != null)
+            {
+                if (!ecPrivKey.Key.ExportPolicy.HasFlag(CngExportPolicies.AllowPlaintextExport))
+                {
+                    // workaround for missing AllowPlaintextExport
+                    PbeParameters encParams = new(PbeEncryptionAlgorithm.Aes128Cbc, HashAlgorithmName.SHA256, 1);
+                    byte[] exportedKey = ecPrivKey.ExportEncryptedPkcs8PrivateKey(PasswordForTemporaryKeys, encParams);
+                    ecPrivKey.ImportEncryptedPkcs8PrivateKey(PasswordForTemporaryKeys, exportedKey, out _);
+                }
+
+                byte[] keyData = ecPrivKey.Key.Export(CngKeyBlobFormat.GenericPrivateBlob);
+                keyParams.Parameters.Add(new CngProperty(CngKeyBlobFormat.GenericPrivateBlob.Format, keyData, CngPropertyOptions.None));
+                //keyParams.Parameters.Add(new CngProperty("Key Type", new byte[] { 0, 0, 0, 32 }, CngPropertyOptions.None));
+            }
 
             //RawSecurityDescriptor sdEveryoneCanRead = new RawSecurityDescriptor("A;;GRFR;;;S-1-1-0");
             //byte[] binSDL = new byte[sdEveryoneCanRead.BinaryLength];
@@ -172,15 +190,17 @@ namespace TPMImport
             //keyParams.Parameters.Add(new CngProperty("Security Descr", binSDL, (CngPropertyOptions) 0x44)); // 0x44 = DACL_SECURITY_INFORMATION | NCRYPT_SILENT_FLAG
 
             if (fVerbose)
-                Console.WriteLine($"Creating RSA CngKeyObject with TPM-Import-Key-{cert.Thumbprint}");
+                Console.WriteLine($"Creating CngKeyObject with TPM-Import-Key-{cert.Thumbprint}");
 
             CngKey key = null;
             string keyName = $"TPM-Import-Key-{cert.Thumbprint}";
 
             try
             {
-                key = CngKey.Create(CngAlgorithm.Rsa, keyName, keyParams);
-
+                if (rsaPrivKey != null)
+                    key = CngKey.Create(CngAlgorithm.Rsa, keyName, keyParams);
+                else
+                    key = CngKey.Create(CngAlgorithm.ECDsaP256, keyName, keyParams);
 
                 //            key = CngKey.Open($"TPM-Import-Key-{cert.Thumbprint}", new CngProvider("Microsoft Platform Crypto Provider"), CngKeyOpenOptions.MachineKey);
 
